@@ -19,6 +19,7 @@ import py_trees
 
 from agents.navigation.roaming_agent import *
 from agents.navigation.basic_agent import *
+from agents.tools.misc import vector
 
 from srunner.scenariomanager.carla_data_provider import CarlaDataProvider
 
@@ -35,6 +36,38 @@ def calculate_distance(location, other_location):
           (shortest) route between the two locations.
     """
     return location.distance(other_location)
+
+def get_intersection(ego_actor, other_actor):
+    """
+    Obtain a intersection point between two actor's location
+    @return point of intersection
+    """
+    waypoint = ego_actor.get_world().get_map().get_waypoint(ego_actor.get_location())
+    waypoint_other = other_actor.get_world().get_map().get_waypoint(other_actor.get_location())
+    max_dist = float("inf")
+    distance = float("inf")
+    while distance <= max_dist:
+        max_dist = distance
+        current_location = waypoint.transform.location
+        waypoint_choice = waypoint.next(1)
+        #   Select the straighter path at intersection
+        if len(waypoint_choice) > 1:
+            max_dot = -1*float('inf')
+            loc_projection = current_location + carla.Location(
+                x=math.cos(math.radians(waypoint.transform.rotation.yaw)),
+                y=math.sin(math.radians(waypoint.transform.rotation.yaw)))
+            v_current = vector(current_location, loc_projection)
+            for wp_select in waypoint_choice:
+                v_select = vector(current_location, wp_select.transform.location)
+                dot_select = np.dot(v_current, v_select)
+                if dot_select > max_dot:
+                    max_dot = dot_select
+                    waypoint = wp_select
+        else:
+            waypoint = waypoint_choice[0]
+        distance = current_location.distance(waypoint_other.transform.location)
+
+    return current_location
 
 
 class AtomicBehavior(py_trees.behaviour.Behaviour):
@@ -778,3 +811,211 @@ class Idle(AtomicBehavior):
         new_status = py_trees.common.Status.RUNNING
 
         return new_status
+
+class WaypointFollower(AtomicBehavior):
+    """
+    This is an atomic behaviour to follow waypoints indefinetly
+    while maintaining a given speed
+    """
+
+    def __init__(self, actor, target_speed, name="FollowWaypoints"):
+        """
+        Set up actor and local planner
+        """
+        super(WaypointFollower, self).__init__(name)
+        self._actor = actor
+        self._control = carla.VehicleControl()
+        self._target_speed = target_speed
+        self._local_planner = None
+
+    def initialise(self):
+        args_lateral_dict = {
+            'K_P': 0.8,
+            'K_D': 0.0,
+            'K_I': 0.0,
+            'dt': 1.0/20.0}
+        self._local_planner = LocalPlanner(
+            self._actor, opt_dict={
+                'target_speed' : self._target_speed,
+                'lateral_control_dict': args_lateral_dict})
+
+    def update(self):
+        """
+        Run local planner, obtain and apply control to actor
+        """
+
+        new_status = py_trees.common.Status.RUNNING
+        control = self._local_planner.run_step()
+        self._actor.apply_control(control)
+
+
+        return new_status
+
+    def terminate(self, new_status):
+        """
+        On termination of this behavior,
+        the throttle, brake and steer should be set back to 0.
+        """
+        self._control.throttle = 0.0
+        self._control.brake = 0.0
+        self._control.steer = 0.0
+        self._actor.apply_control(self._control)
+        super(WaypointFollower, self).terminate(new_status)
+
+class HandBrakeVehicle(AtomicBehavior):
+
+    """
+    This class contains an atomic brake behavior.
+    To set the brake value of the vehicle.
+    """
+
+    def __init__(self, vehicle, hand_brake_value, name="Braking"):
+        """
+        Setup vehicle control and brake value
+        """
+        super(HandBrakeVehicle, self).__init__(name)
+        self.logger.debug("%s.__init__()" % (self.__class__.__name__))
+        self._control = carla.VehicleControl()
+        self._vehicle = vehicle
+        self._hand_brake_value = hand_brake_value
+
+    def update(self):
+        """
+        Set handbrake
+        """
+        self._control.hand_brake = self._hand_brake_value
+        new_status = py_trees.common.Status.SUCCESS
+
+        self.logger.debug("%s.update()[%s->%s]" %
+                          (self.__class__.__name__, self.status, new_status))
+        self._vehicle.apply_control(self._control)
+
+        return new_status
+
+class TurnVehicle(AtomicBehavior):
+    """
+    This atomic behaviour performs either a right or left turn
+    at the next junction
+    """
+
+    def __init__(self, vehicle, speed, turn, name="TurnVehicle"):
+        """
+        Setting initialization parameters.
+        vehicle     :   Vehicle to be turned
+        speed       :   Speed at which to execute the turn in kmph
+        turn        :   Turn index. LEFT -> 1, RIGHT -> -1
+        """
+        super(TurnVehicle, self).__init__(name)
+        self.logger.debug("%s.__init__()" % (self.__class__.__name__))
+        self._vehicle = vehicle
+        self._map = self._vehicle.get_world().get_map()
+        self._turn = turn
+        self._next_wp = None
+        self._previous_wp = None
+        self._wp_list = []
+        self._threshold = 2 #   degree
+        self._target_speed = speed
+        self._sampling_radius = 0.5 * self._target_speed / 3.6
+        self._minimum_distance = 0.9 * self._sampling_radius
+        self._road_option = RoadOption.LEFT if turn > 0 else RoadOption.RIGHT
+        # Generate tragectoy
+        self._get_tragectory()
+        self._local_planner = LocalPlanner(
+            self._vehicle, opt_dict={'target_speed' : self._target_speed})
+        self._local_planner.set_global_plan(self._wp_list)
+
+    def update(self):
+        """
+        Follow waypoints to a junction and choose path based on turn input,
+        then execute the turn
+        """
+
+        new_status = py_trees.common.Status.RUNNING
+
+        #   Generate controls and apply
+        target_location = self._wp_list[-1][0].transform.location
+        if self._vehicle.get_location().distance(
+                target_location) > self._minimum_distance:
+            control = self._local_planner.run_step(debug=False)
+            self._vehicle.apply_control(control)
+        else:
+            new_status = py_trees.common.Status.SUCCESS
+
+        return new_status
+
+    def _get_tragectory(self):
+        """
+        Generates waypoint list to execute the turn
+        """
+
+        reached_junction = False
+        angle_wp = float('inf')
+        while angle_wp > np.radians(self._threshold):
+            #   Retrieve vehicle state
+            current_transform = self._vehicle.get_transform()
+            current_location = current_transform.location
+            projected_location = current_location + \
+                carla.Location(
+                    x=math.cos(math.radians(current_transform.rotation.yaw)),
+                    y=math.sin(math.radians(current_transform.rotation.yaw)))
+            v_actual = self._vector(current_location, projected_location)
+            if not self._next_wp:
+                self._next_wp = self._map.get_waypoint(current_location)
+            wp_choice = self._next_wp.next(self._sampling_radius)
+            #   Choose path at intersection
+            if not reached_junction and len(wp_choice) > 1:
+                reached_junction = True
+                select_criteria = float('inf')
+                for wp_select in wp_choice:
+                    v_select = self._vector(
+                        current_location, wp_select.transform.location)
+                    cross = self._turn*np.cross(v_actual, v_select)[-1]
+                    if cross < select_criteria:
+                        select_criteria = cross
+                        self._next_wp = wp_select
+            else:
+                self._next_wp = wp_choice[0]
+            self._wp_list.append((self._next_wp, self._road_option))
+
+            #   Update loop condition
+            if len(self._wp_list) >= 3:
+                v_1 = self._vector(
+                    self._wp_list[-2][0].transform.location,
+                    self._wp_list[-1][0].transform.location)
+                v_2 = self._vector(
+                    self._wp_list[-3][0].transform.location,
+                    self._wp_list[-2][0].transform.location)
+                angle_wp = math.acos(
+                    np.dot(v_1, v_2)/\
+                        (np.linalg.norm(v_1)*np.linalg.norm(v_2)))
+
+    def _vector(self, l_1, l_2):
+        """
+        Returns the unit vector from l_1 to l_2
+        l_1, l_2    :   carla.Location objects
+        """
+        x = l_2.x-l_1.x
+        y = l_2.y-l_1.y
+        norm = np.linalg.norm([x, y])
+        return [x/norm, y/norm, 0]
+
+    def _draw(self, begin, end):
+        """
+        Function to draw arrows in the simulator for debugging
+        """
+        begin = begin.transform.location
+        end = end.transform.location
+        world = self._vehicle.get_world()
+        world.debug.draw_arrow(begin, end, arrow_size=0.3, life_time=1.0)
+
+    def terminate(self, new_status):
+        """
+        On termination of this behavior, the throttle should be set back to 0.,
+        to avoid further acceleration.
+        """
+        control = carla.VehicleControl()
+        control.throttle = 0.0
+        control.brake = 0.0
+        control.steer = 0.0
+        self._vehicle.apply_control(control)
+        super(TurnVehicle, self).terminate(new_status)
