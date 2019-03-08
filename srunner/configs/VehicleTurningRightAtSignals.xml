@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<scenarios>
+    <scenario name="VehicleTurningRightAtSignalizedJunctions_1" type="VehicleTurningRightAtSignalizedJunctions" town="Town05">
+        <ego_vehicle x="-43.9" y="74.6" z="0.5" yaw="-90" model="vehicle.lincoln.mkz2017" />
+        <other_actor x="16.2" y="-4.5" z="0.5" yaw="-179" model="vehicle.tesla.model3" />
+    </scenario>
+    <scenario name="VehicleTurningRightAtSignalizedJunctions_2" type="VehicleTurningRightAtSignalizedJunctions" town="Town03">
+        <ego_vehicle x="-74.32" y="-50" z="0.5" yaw="270" model="vehicle.lincoln.mkz2017" />
+        <other_actor x="-105" y="-136" z="0.5" yaw="0" model="vehicle.tesla.model3" />
+    </scenario>
+    <scenario name="VehicleTurningRightAtSignalizedJunctions_3" type="VehicleTurningRightAtSignalizedJunctions" town="Town03">
+        <ego_vehicle x="70" y="127.8" z="0.5" yaw="-178" model="vehicle.lincoln.mkz2017" />
+        <other_actor x="-10.3" y="70.8" z="0.5" yaw="90" model="vehicle.tesla.model3" />
+    </scenario>
+</scenarios>
