@@ -5,13 +5,13 @@ set(CMAKE_C_COMPILER /usr/bin/clang-6.0)
 set(CMAKE_CXX_COMPILER /usr/bin/clang++-6.0)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14 -O3 -DNDEBUG" CACHE STRING "" FORCE)
 
-#set(LIBCARLA_LOCATION /home/praveen/opt/libcarla/)
+#set(LIBCARLA_LOCATION /home/mariyamp/workspace/LibCarla/)
 
 include_directories(include/)
-include_directories(/home/praveen/opt/libcarla/include)
-include_directories(/home/praveen/opt/libcarla/include/system/)
+include_directories(/home/mariyamp/workspace/LibCarla/install-folder/include/)
+include_directories(/home/mariyamp/workspace/LibCarla/install-folder/include/system/)
 
-link_directories(/home/praveen/opt/libcarla/lib/)
+link_directories(/home/mariyamp/workspace/LibCarla/install-folder/lib/)
 
 file(GLOB SOURCES src/*.cpp)
 file(GLOB SOURCES_EXE test/*.cpp)
