@@ -62,39 +62,38 @@ namespace traffic_manager {
   bool CollisionCallable::negotiateCollision(
       carla::SharedPtr<carla::client::Actor> ego_vehicle,
       carla::SharedPtr<carla::client::Actor> other_vehicle) const {
+
+    bool hazard = false;
     auto overlap = checkGeodesicCollision(ego_vehicle, other_vehicle);
+    if (overlap) {
+      auto reference_heading_vector = ego_vehicle->GetTransform().GetForwardVector();
+      reference_heading_vector.z = 0;
+      reference_heading_vector = reference_heading_vector.MakeUnitVector();
+      auto relative_other_vector = other_vehicle->GetLocation() - ego_vehicle->GetLocation();
+      relative_other_vector.z = 0;
+      relative_other_vector = relative_other_vector.MakeUnitVector();
+      float reference_relative_dot = reference_heading_vector.x * relative_other_vector.x +
+          reference_heading_vector.y * relative_other_vector.y;
 
-    auto reference_heading_vector = ego_vehicle->GetTransform().GetForwardVector();
-    reference_heading_vector.z = 0;
-    reference_heading_vector = reference_heading_vector.MakeUnitVector();
-    auto relative_other_vector = other_vehicle->GetLocation() - ego_vehicle->GetLocation();
-    relative_other_vector.z = 0;
-    relative_other_vector = relative_other_vector.MakeUnitVector();
-    float reference_relative_dot = reference_heading_vector.x * relative_other_vector.x +
-        reference_heading_vector.y * relative_other_vector.y;
+      auto relative_reference_vector = ego_vehicle->GetLocation() - other_vehicle->GetLocation();
+      relative_reference_vector.z = 0;
+      relative_reference_vector = relative_reference_vector.MakeUnitVector();
+      auto other_heading_vector = other_vehicle->GetTransform().GetForwardVector();
+      other_heading_vector.z = 0;
+      other_heading_vector = other_heading_vector.MakeUnitVector();
+      float other_relative_dot = other_heading_vector.x * relative_reference_vector.x +
+          other_heading_vector.y * relative_reference_vector.y;
 
-    auto relative_reference_vector = ego_vehicle->GetLocation() - other_vehicle->GetLocation();
-    relative_reference_vector.z = 0;
-    relative_reference_vector = relative_reference_vector.MakeUnitVector();
-    auto other_heading_vector = other_vehicle->GetTransform().GetForwardVector();
-    other_heading_vector.z = 0;
-    other_heading_vector = other_heading_vector.MakeUnitVector();
-    float other_relative_dot = other_heading_vector.x * relative_reference_vector.x +
-        other_heading_vector.y * relative_reference_vector.y;
-
-    if (
-      overlap > 0
-      and
-      reference_relative_dot > other_relative_dot) {
-      return true;
+      hazard = reference_relative_dot > other_relative_dot;
     }
 
-    return false;
+    return hazard;
   }
 
   bool CollisionCallable::checkGeodesicCollision(
       carla::SharedPtr<carla::client::Actor> reference_vehicle,
       carla::SharedPtr<carla::client::Actor> other_vehicle) const {
+    bool overlap = false;
     auto reference_height = reference_vehicle->GetLocation().z;
     auto other_height = other_vehicle->GetLocation().z;
     if (abs(reference_height - other_height) < VERTICAL_OVERLAP_THRESHOLD) {
@@ -104,20 +103,27 @@ namespace traffic_manager {
           reference_vehicle, reference_bbox);
       auto other_geodesic_boundary = getGeodesicBoundary(
           other_vehicle, other_bbox);
-      auto reference_polygon = getPolygon(reference_geodesic_boundary);
-      auto other_polygon = getPolygon(other_geodesic_boundary);
+      if (
+        reference_geodesic_boundary.size() > 0
+        and
+        other_geodesic_boundary.size() > 0
+      ) {
+        auto reference_polygon = getPolygon(reference_geodesic_boundary);
+        auto other_polygon = getPolygon(other_geodesic_boundary);
 
-      std::deque<polygon> output;
-      boost::geometry::intersection(reference_polygon, other_polygon, output);
+        std::deque<polygon> output;
+        boost::geometry::intersection(reference_polygon, other_polygon, output);
 
-      BOOST_FOREACH(polygon const & p, output) {
-        if (boost::geometry::area(p) > ZERO_AREA) {
-          return true;
+        BOOST_FOREACH(polygon const & p, output) {
+          if (boost::geometry::area(p) > ZERO_AREA) {
+            overlap = true;
+            break;
+          }
         }
       }
     }
 
-    return false;
+    return overlap;
   }
 
   traffic_manager::polygon CollisionCallable::getPolygon(const std::vector<carla::geom::Location> &boundary) const {
@@ -136,35 +142,38 @@ namespace traffic_manager {
   std::vector<carla::geom::Location> CollisionCallable::getGeodesicBoundary(
       carla::SharedPtr<carla::client::Actor> actor,
       const std::vector<carla::geom::Location> &bbox) const {
+
     auto velocity = actor->GetVelocity().Length();
     int bbox_extension = static_cast<int>(
       std::max(std::sqrt(EXTENSION_SQUARE_POINT * velocity), BOUNDARY_EXTENSION_MINIMUM) +
       std::max(velocity * TIME_HORIZON, BOUNDARY_EXTENSION_MINIMUM) +
       BOUNDARY_EXTENSION_MINIMUM
-      );   // Account for these constants
-    bbox_extension = velocity > HIGHWAY_SPEED ? HIGHWAY_TIME_HORIZON * velocity : bbox_extension;
-    auto simple_waypoints = this->shared_data->buffer_map[actor->GetId()]->getContent(bbox_extension);
-    std::vector<carla::geom::Location> left_boundary;
-    std::vector<carla::geom::Location> right_boundary;
-    auto vehicle = boost::static_pointer_cast<carla::client::Vehicle>(actor);
-    float width = vehicle->GetBoundingBox().extent.y;
-
-    for (auto swp: simple_waypoints) {
-      auto vector = swp->getVector();
-      auto location = swp->getLocation();
-      auto perpendicular_vector = carla::geom::Vector3D(-1 * vector.y, vector.x, 0);
-      perpendicular_vector = perpendicular_vector.MakeUnitVector();
-      left_boundary.push_back(location + carla::geom::Location(perpendicular_vector * width));
-      right_boundary.push_back(location - carla::geom::Location(perpendicular_vector * width));
-    }
+    );   // Account for these constants
 
     std::vector<carla::geom::Location> geodesic_boundary;
-    std::reverse(left_boundary.begin(), left_boundary.end());
-    geodesic_boundary.insert(geodesic_boundary.end(), left_boundary.begin(), left_boundary.end());
-    geodesic_boundary.insert(geodesic_boundary.end(), bbox.begin(), bbox.end());
-    geodesic_boundary.insert(geodesic_boundary.end(), right_boundary.begin(), right_boundary.end());
-    std::reverse(geodesic_boundary.begin(), geodesic_boundary.end());
+    if (this->shared_data->buffer_map[actor->GetId()] != nullptr) {
+      bbox_extension = velocity > HIGHWAY_SPEED ? HIGHWAY_TIME_HORIZON * velocity : bbox_extension;
+      auto simple_waypoints = this->shared_data->buffer_map[actor->GetId()]->getContent(bbox_extension);
+      std::vector<carla::geom::Location> left_boundary;
+      std::vector<carla::geom::Location> right_boundary;
+      auto vehicle = boost::static_pointer_cast<carla::client::Vehicle>(actor);
+      float width = vehicle->GetBoundingBox().extent.y;
 
+      for (auto swp: simple_waypoints) {
+        auto vector = swp->getVector();
+        auto location = swp->getLocation();
+        auto perpendicular_vector = carla::geom::Vector3D(-1 * vector.y, vector.x, 0);
+        perpendicular_vector = perpendicular_vector.MakeUnitVector();
+        left_boundary.push_back(location + carla::geom::Location(perpendicular_vector * width));
+        right_boundary.push_back(location - carla::geom::Location(perpendicular_vector * width));
+      }
+
+      std::reverse(left_boundary.begin(), left_boundary.end());
+      geodesic_boundary.insert(geodesic_boundary.end(), left_boundary.begin(), left_boundary.end());
+      geodesic_boundary.insert(geodesic_boundary.end(), bbox.begin(), bbox.end());
+      geodesic_boundary.insert(geodesic_boundary.end(), right_boundary.begin(), right_boundary.end());
+      std::reverse(geodesic_boundary.begin(), geodesic_boundary.end());
+    }
     return geodesic_boundary;
   }
 

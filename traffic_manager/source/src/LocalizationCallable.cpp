@@ -27,7 +27,11 @@ namespace traffic_manager {
 
     if (
       shared_data->buffer_map.find(actor_id) != shared_data->buffer_map.end()
-      and !shared_data->buffer_map[actor_id]->empty()) { // Existing actor in buffer map
+      and
+      shared_data->buffer_map[actor_id] != nullptr
+      and
+      !shared_data->buffer_map[actor_id]->empty()
+    ) { // Existing actor in buffer map
 
       /// Purge past waypoints
       auto dot_product = deviationDotProduct(
@@ -64,7 +68,17 @@ namespace traffic_manager {
     } else {       // New actor to buffer map
 
       /// Make size of queue a derived or constant
-      shared_data->buffer_map[actor_id] = std::make_shared<SyncQueue<std::shared_ptr<SimpleWaypoint>>>(200);
+      while (
+        shared_data->buffer_map.find(actor_id) == shared_data->buffer_map.end()
+        or
+        shared_data->buffer_map[actor_id] == nullptr
+      ) {
+        shared_data->buffer_map.insert(
+          std::pair<int, std::shared_ptr<SyncQueue<std::shared_ptr<SimpleWaypoint>>>> (
+            actor_id, std::make_shared<SyncQueue<std::shared_ptr<SimpleWaypoint>>>(200)
+          )
+        );
+      }
       auto closest_waypoint = shared_data->local_map->getWaypoint(vehicle_location);
       /// Initialize buffer for actor
       shared_data->buffer_map[actor_id]->push(closest_waypoint);

@@ -19,8 +19,14 @@ namespace traffic_manager {
 
       auto compute_time_start = std::chrono::system_clock::now();
       for (auto actor: shared_data->registered_actors) {
-        message.setActor(actor);
-        writeQueue(message);
+        if (
+          actor != nullptr
+          and
+          actor->IsAlive()
+        ) {
+          message.setActor(actor);
+          writeQueue(message);
+        }
       }
       auto compute_time_end = std::chrono::system_clock::now();
       std::chrono::duration<double> compute_duration = compute_time_end - compute_time_start;

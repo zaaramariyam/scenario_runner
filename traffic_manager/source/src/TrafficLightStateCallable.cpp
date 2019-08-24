@@ -17,6 +17,8 @@ namespace traffic_manager {
   PipelineMessage TrafficLightStateCallable::action(PipelineMessage &message) {
     PipelineMessage out_message;
 
+    float traffic_hazard = -1;
+
     float throttle = message.getAttribute("throttle");
     float brake = message.getAttribute("brake");
     float steer = message.getAttribute("steer");
@@ -25,21 +27,23 @@ namespace traffic_manager {
     auto vehicle = boost::static_pointer_cast<carla::client::Vehicle>(message.getActor());
     auto traffic_light_state = vehicle->GetTrafficLightState();
 
-    auto closest_waypoint = shared_data->buffer_map[actor_id]->front();
-    auto next_waypoint = shared_data->buffer_map[actor_id]->get(JUNCTION_LOOK_AHEAD_INDEX);
+    if (shared_data->buffer_map[actor_id] != nullptr) {
+      auto closest_waypoint = shared_data->buffer_map[actor_id]->front();
+      auto next_waypoint = shared_data->buffer_map[actor_id]->get(JUNCTION_LOOK_AHEAD_INDEX);
 
-    float traffic_hazard = -1;
-    if (
-      !(closest_waypoint->checkJunction())
-      and
-      (
-        traffic_light_state == carla::rpc::TrafficLightState::Red
-        or
-        traffic_light_state == carla::rpc::TrafficLightState::Yellow
-      )
-      and
-      next_waypoint->checkJunction()) {
-      traffic_hazard = 1;
+      if (
+        !(closest_waypoint->checkJunction())
+        and
+        (
+          traffic_light_state == carla::rpc::TrafficLightState::Red
+          or
+          traffic_light_state == carla::rpc::TrafficLightState::Yellow
+        )
+        and
+        next_waypoint->checkJunction()
+      ) {
+        traffic_hazard = 1;
+      }
     }
 
     out_message.setActor(message.getActor());
