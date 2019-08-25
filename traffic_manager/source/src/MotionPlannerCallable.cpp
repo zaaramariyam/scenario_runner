@@ -58,14 +58,14 @@ namespace traffic_manager {
         std::sqrt(target_velocity * dynamic_target_velocity)),
         MINIMUM_JUNCTION_LOOK_AHEAD);
     if (
-      shared_data->buffer_map[actor_id] != nullptr
+      shared_data->buffer_map.contains(actor_id)
       and
-      shared_data->buffer_map[actor_id]->get(junction_index)->checkJunction()
-      and !(shared_data->buffer_map[actor_id]->get(1)->checkJunction())
+      shared_data->buffer_map.get(actor_id)->get(junction_index)->checkJunction()
+      and !(shared_data->buffer_map.get(actor_id)->get(1)->checkJunction())
     ) {
       bool found_true_horizon = false;
       if (speed_limit > HIGHWAY_SPEED) {
-        auto horizon_to_junction = shared_data->buffer_map[actor_id]->getContent(junction_index);
+        auto horizon_to_junction = shared_data->buffer_map.get(actor_id)->getContent(junction_index);
         for (auto swp: horizon_to_junction) {
           if (swp->getNextWaypoint().size() > 1) {
             found_true_horizon = true;

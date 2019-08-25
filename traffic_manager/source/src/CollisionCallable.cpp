@@ -28,7 +28,8 @@ namespace traffic_manager {
       auto actor = it->first;
       if (
         actor->GetId() != message.getActorID()
-        and shared_data->buffer_map.find(actor->GetId()) != shared_data->buffer_map.end()) {
+        and shared_data->buffer_map.contains(actor->GetId())
+      ) {
         auto ego_actor = message.getActor();
         auto ego_actor_location = ego_actor->GetLocation();
         float actor_distance = actor->GetLocation().Distance(ego_actor_location);
@@ -151,9 +152,9 @@ namespace traffic_manager {
     );   // Account for these constants
 
     std::vector<carla::geom::Location> geodesic_boundary;
-    if (this->shared_data->buffer_map[actor->GetId()] != nullptr) {
+    if (this->shared_data->buffer_map.contains(actor->GetId())) {
       bbox_extension = velocity > HIGHWAY_SPEED ? HIGHWAY_TIME_HORIZON * velocity : bbox_extension;
-      auto simple_waypoints = this->shared_data->buffer_map[actor->GetId()]->getContent(bbox_extension);
+      auto simple_waypoints = this->shared_data->buffer_map.get(actor->GetId())->getContent(bbox_extension);
       std::vector<carla::geom::Location> left_boundary;
       std::vector<carla::geom::Location> right_boundary;
       auto vehicle = boost::static_pointer_cast<carla::client::Vehicle>(actor);

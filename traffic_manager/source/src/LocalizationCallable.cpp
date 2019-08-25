@@ -26,71 +26,65 @@ namespace traffic_manager {
         MINIMUM_HORIZON_LENGTH);
 
     if (
-      shared_data->buffer_map.find(actor_id) != shared_data->buffer_map.end()
+      shared_data->buffer_map.contains(actor_id)
       and
-      shared_data->buffer_map[actor_id] != nullptr
-      and
-      !shared_data->buffer_map[actor_id]->empty()
+      !(shared_data->buffer_map.get(actor_id)->empty())
     ) { // Existing actor in buffer map
 
+      auto waypoint_buffer = shared_data->buffer_map.get(actor_id);
       /// Purge past waypoints
       auto dot_product = deviationDotProduct(
           vehicle,
-          shared_data->buffer_map[actor_id]->front()->getLocation());
+          waypoint_buffer->front()->getLocation());
       while (dot_product <= 0) {
-        shared_data->buffer_map[actor_id]->pop();
-        if (!shared_data->buffer_map[actor_id]->empty()) {
+        waypoint_buffer->pop();
+        if (!waypoint_buffer->empty()) {
           dot_product = deviationDotProduct(
               vehicle,
-              shared_data->buffer_map[actor_id]->front()->getLocation());
+              waypoint_buffer->front()->getLocation());
         } else {
           break;
         }
       }
 
       /// Re-initialize buffer if empty
-      if (shared_data->buffer_map[actor_id]->empty()) {
+      if (waypoint_buffer->empty()) {
         auto closest_waypoint = shared_data->local_map->getWaypoint(vehicle_location);
-        shared_data->buffer_map[actor_id]->push(closest_waypoint);
+        waypoint_buffer->push(closest_waypoint);
       }
 
       /// Re-populate buffer
       while (
-        shared_data->buffer_map[actor_id]->back()->distance(
-        shared_data->buffer_map[actor_id]->front()->getLocation()) <= horizon_size // Make this a constant
-        ) {
-        auto next_waypoints = shared_data->buffer_map[actor_id]->back()->getNextWaypoint();
+        waypoint_buffer->back()->distance(
+        waypoint_buffer->front()->getLocation()) <= horizon_size // Make this a constant
+      ) {
+        auto next_waypoints = waypoint_buffer->back()->getNextWaypoint();
         auto selection_index = next_waypoints.size() > 1 ? rand() % next_waypoints.size() : 0;
         auto feed_waypoint = next_waypoints[selection_index];
-        shared_data->buffer_map[actor_id]->push(feed_waypoint);
+        waypoint_buffer->push(feed_waypoint);
       }
 
     } else {       // New actor to buffer map
 
       /// Make size of queue a derived or constant
-      while (
-        shared_data->buffer_map.find(actor_id) == shared_data->buffer_map.end()
-        or
-        shared_data->buffer_map[actor_id] == nullptr
-      ) {
-        shared_data->buffer_map.insert(
-          std::pair<int, std::shared_ptr<SyncQueue<std::shared_ptr<SimpleWaypoint>>>> (
+      while (!(shared_data->buffer_map.contains(actor_id))) {
+        shared_data->buffer_map.put(
             actor_id, std::make_shared<SyncQueue<std::shared_ptr<SimpleWaypoint>>>(200)
-          )
         );
       }
       auto closest_waypoint = shared_data->local_map->getWaypoint(vehicle_location);
       /// Initialize buffer for actor
-      shared_data->buffer_map[actor_id]->push(closest_waypoint);
+      auto waypoint_buffer = shared_data->buffer_map.get(actor_id);
+      waypoint_buffer->push(closest_waypoint);
       /// Populate buffer
       while (
-        shared_data->buffer_map[actor_id]->back()->distance(
-        shared_data->buffer_map[actor_id]->front()->getLocation()) <= horizon_size // Make this a constant
-        ) {
+        waypoint_buffer->back()->distance(
+        waypoint_buffer->front()->getLocation()) <= horizon_size // Make this a constant
+      ) {
         auto next_waypoints = closest_waypoint->getNextWaypoint();
         auto selection_index = next_waypoints.size() > 1 ? rand() % next_waypoints.size() : 0;
         closest_waypoint = next_waypoints[selection_index];
-        shared_data->buffer_map[actor_id]->push(closest_waypoint);
+        waypoint_buffer->push(closest_waypoint);
       }
     }
 
@@ -101,7 +95,7 @@ namespace traffic_manager {
       std::ceil(vehicle_velocity * TARGET_WAYPOINT_TIME_HORIZON),
       TARGET_WAYPOINT_HORIZON_LENGTH)
       );
-    auto target_waypoint = shared_data->buffer_map[actor_id]->get(horizon_index);
+    auto target_waypoint = shared_data->buffer_map.get(actor_id)->get(horizon_index);
     float dot_product = deviationDotProduct(vehicle, target_waypoint->getLocation());
     float cross_product = deviationCrossProduct(vehicle, target_waypoint->getLocation());
     dot_product = 1 - dot_product;

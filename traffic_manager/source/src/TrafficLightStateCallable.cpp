@@ -27,9 +27,9 @@ namespace traffic_manager {
     auto vehicle = boost::static_pointer_cast<carla::client::Vehicle>(message.getActor());
     auto traffic_light_state = vehicle->GetTrafficLightState();
 
-    if (shared_data->buffer_map[actor_id] != nullptr) {
-      auto closest_waypoint = shared_data->buffer_map[actor_id]->front();
-      auto next_waypoint = shared_data->buffer_map[actor_id]->get(JUNCTION_LOOK_AHEAD_INDEX);
+    if (shared_data->buffer_map.contains(actor_id)) {
+      auto closest_waypoint = shared_data->buffer_map.get(actor_id)->front();
+      auto next_waypoint = shared_data->buffer_map.get(actor_id)->get(JUNCTION_LOOK_AHEAD_INDEX);
 
       if (
         !(closest_waypoint->checkJunction())
