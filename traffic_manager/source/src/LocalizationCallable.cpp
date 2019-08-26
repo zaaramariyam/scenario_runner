@@ -51,6 +51,19 @@ namespace traffic_manager {
       if (waypoint_buffer->empty()) {
         auto closest_waypoint = shared_data->local_map->getWaypoint(vehicle_location);
         waypoint_buffer->push(closest_waypoint);
+      } 
+
+      /// Make lane change decisions
+      auto way_front = waypoint_buffer->back()->getWaypoint();
+      auto lane_change_waypoints = shared_data->traffic_distributor.assignDistribution(
+        actor_id,
+        way_front->GetRoadId(),
+        way_front->GetSectionId(),
+        way_front->GetLaneId(),
+        waypoint_buffer->back()
+      );
+      for (auto wp: lane_change_waypoints) {
+        waypoint_buffer->push(wp);
       }
 
       /// Re-populate buffer

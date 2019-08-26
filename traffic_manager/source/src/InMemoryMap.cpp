@@ -193,17 +193,17 @@ namespace traffic_manager {
 
     if (neighbor_waypoint != nullptr) {
       auto neighbour_road_id = neighbor_waypoint->GetRoadId();
-      auto neigbhour_section_id = neighbor_waypoint->GetSectionId();
-      auto neigbhour_lane_id = neighbor_waypoint->GetLaneId();
+      auto neighbour_section_id = neighbor_waypoint->GetSectionId();
+      auto neighbour_lane_id = neighbor_waypoint->GetLaneId();
 
       if (
         waypoint_structure.find(neighbour_road_id) != waypoint_structure.end()
         and
-        waypoint_structure[neighbour_road_id].find(neigbhour_section_id)
+        waypoint_structure[neighbour_road_id].find(neighbour_section_id)
           != waypoint_structure[neighbour_road_id].end()
         and
-        waypoint_structure[neighbour_road_id][neigbhour_section_id].find(neigbhour_lane_id)
-          != waypoint_structure[neighbour_road_id][neigbhour_section_id].end()
+        waypoint_structure[neighbour_road_id][neighbour_section_id].find(neighbour_lane_id)
+          != waypoint_structure[neighbour_road_id][neighbour_section_id].end()
       ) {
 
         std::vector<std::shared_ptr<SimpleWaypoint>> waypoints_to_left

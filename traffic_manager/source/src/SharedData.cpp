@@ -4,7 +4,7 @@
 
 namespace traffic_manager {
 
-  SharedData::SharedData() {}
+  SharedData::SharedData(){}
   SharedData::~SharedData() {}
 
   void SharedData::destroy() {

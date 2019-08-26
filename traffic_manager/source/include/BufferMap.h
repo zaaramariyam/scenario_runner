@@ -18,10 +18,6 @@ namespace traffic_manager {
 
         void put(K key, D data) {
 
-            if (key == NULL or data == NULL) {
-                throw "Key or Data is Null!";
-            }
-
             if (data_map.find(key) == data_map.end()) {
                 std::lock_guard<std::mutex> lock (put_mutex);
                 
@@ -32,10 +28,7 @@ namespace traffic_manager {
         }
 
         D get(K key){
-            // std::cout << "In Get before At" << std::endl;
-            auto value = data_map.at(key);
-            // std::cout << "In Get after At" << std::endl;
-            return value;
+            return data_map.at(key);
         }
 
         bool contains(K key){
